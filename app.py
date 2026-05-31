@@ -20,6 +20,8 @@ from dash import Dash, Input, Output, dcc, html
 GATEWAY = os.environ.get("ECOWITT_GATEWAY", "192.168.2.201")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 DB_PATH = Path(os.environ.get("SOIL_DB", Path(__file__).parent / "soil.db"))
+HOST = os.environ.get("HOST", "127.0.0.1")
+PORT = int(os.environ.get("PORT", "8050"))
 
 
 def init_db() -> None:
@@ -375,4 +377,4 @@ if __name__ == "__main__":
     except Exception as e:  # noqa: BLE001
         print(f"[startup] initial fetch failed: {e}", flush=True)
     threading.Thread(target=poller, daemon=True).start()
-    make_app().run(host="127.0.0.1", port=8050, debug=False)
+    make_app().run(host=HOST, port=PORT, debug=False)
