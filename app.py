@@ -140,8 +140,53 @@ def moisture_color(pct: float) -> str:
     return "#3a7bd5"      # deep blue — saturated
 
 
+def battery_indicator(level: int) -> html.Div:
+    """WH51 reports battery 0–5 (5 = full). Render as a small battery icon."""
+    level = max(0, min(5, int(level)))
+    pct = level / 5 * 100
+    color = "#5cb85c" if level >= 3 else ("#f0ad4e" if level >= 2 else "#d9534f")
+    return html.Div(
+        style={
+            "width": "26px",
+            "height": "11px",
+            "border": f"1.5px solid {color}",
+            "borderRadius": "2px",
+            "position": "relative",
+            "display": "inline-block",
+            "verticalAlign": "middle",
+        },
+        children=[
+            # Battery "nub" on the right end.
+            html.Div(
+                style={
+                    "position": "absolute",
+                    "right": "-3px",
+                    "top": "3px",
+                    "width": "2px",
+                    "height": "5px",
+                    "background": color,
+                    "borderRadius": "0 1px 1px 0",
+                }
+            ),
+            # Fill.
+            html.Div(
+                style={
+                    "position": "absolute",
+                    "left": "1px",
+                    "top": "1px",
+                    "bottom": "1px",
+                    "width": f"calc({pct}% - 2px)",
+                    "background": color,
+                    "borderRadius": "1px",
+                    "transition": "width 0.6s ease, background 0.6s ease",
+                }
+            ),
+        ],
+    )
+
+
 def build_gauges(latest: pd.DataFrame) -> html.Div:
-    """Row of vertical 'glass half full' bars, one per channel."""
+    """Responsive grid of channel cards with a vertical 'fill' gauge."""
     if latest.empty:
         return html.Div(
             "No channels yet.",
@@ -152,25 +197,25 @@ def build_gauges(latest: pd.DataFrame) -> html.Div:
     for _, r in latest.iterrows():
         pct = max(0.0, min(100.0, float(r["humidity"])))
         color = moisture_color(pct)
-        label = (r["name"] or "").strip()
-        title = f"Ch {int(r['channel'])}" + (f" · {label}" if label else "")
+        name = (r["name"] or f"Channel {int(r['channel'])}").strip()
+        battery = int(r["battery"])
+        voltage = float(r["voltage"])
 
-        bar = html.Div(
+        gauge = html.Div(
             style={
                 "position": "relative",
-                "width": "60px",
-                "height": "200px",
-                "border": "1px solid #ccc",
-                "borderRadius": "8px",
+                "width": "72px",
+                "height": "160px",
+                "border": "1px solid #d4d4d4",
+                "borderRadius": "10px",
                 "background": (
                     "repeating-linear-gradient("
-                    "to bottom, #fafafa 0 19px, #f0f0f0 19px 20px)"
+                    "to bottom, #fafafa 0 31px, #f0f0f0 31px 32px)"
                 ),
                 "overflow": "hidden",
-                "margin": "0 auto",
+                "margin": "4px auto 12px",
             },
             children=[
-                # The fill grows from the bottom up.
                 html.Div(
                     style={
                         "position": "absolute",
@@ -182,7 +227,6 @@ def build_gauges(latest: pd.DataFrame) -> html.Div:
                         "transition": "height 0.6s ease, background 0.6s ease",
                     }
                 ),
-                # Centered percentage label on top of the fill.
                 html.Div(
                     f"{pct:.0f}%",
                     style={
@@ -192,10 +236,10 @@ def build_gauges(latest: pd.DataFrame) -> html.Div:
                         "top": "50%",
                         "transform": "translateY(-50%)",
                         "textAlign": "center",
-                        "fontWeight": 600,
-                        "fontSize": "16px",
+                        "fontWeight": 700,
+                        "fontSize": "18px",
                         "color": "#222",
-                        "textShadow": "0 0 4px rgba(255,255,255,0.85)",
+                        "textShadow": "0 0 6px rgba(255,255,255,0.9)",
                     },
                 ),
             ],
@@ -204,29 +248,48 @@ def build_gauges(latest: pd.DataFrame) -> html.Div:
         cards.append(
             html.Div(
                 style={
+                    "background": "#fff",
+                    "border": "1px solid #e5e5e5",
+                    "borderRadius": "12px",
+                    "padding": "14px 12px 12px",
                     "display": "flex",
                     "flexDirection": "column",
                     "alignItems": "center",
-                    "minWidth": "90px",
-                    "padding": "8px",
+                    "boxShadow": "0 1px 3px rgba(0,0,0,0.04)",
                 },
                 children=[
                     html.Div(
-                        title,
+                        name,
+                        title=name,
                         style={
                             "fontSize": "13px",
-                            "color": "#444",
-                            "marginBottom": "8px",
-                            "whiteSpace": "nowrap",
+                            "fontWeight": 600,
+                            "color": "#333",
+                            "textAlign": "center",
+                            "lineHeight": "1.25",
+                            "minHeight": "34px",
+                            "display": "flex",
+                            "alignItems": "center",
+                            "justifyContent": "center",
                         },
                     ),
-                    bar,
+                    gauge,
                     html.Div(
-                        f"{r['voltage']:.2f} V",
+                        [
+                            battery_indicator(battery),
+                            html.Span(
+                                f"{voltage:.2f} V",
+                                style={
+                                    "fontSize": "11px",
+                                    "color": "#888",
+                                    "marginLeft": "8px",
+                                },
+                            ),
+                        ],
                         style={
-                            "fontSize": "11px",
-                            "color": "#888",
-                            "marginTop": "6px",
+                            "display": "flex",
+                            "alignItems": "center",
+                            "justifyContent": "center",
                         },
                     ),
                 ],
@@ -236,11 +299,10 @@ def build_gauges(latest: pd.DataFrame) -> html.Div:
     return html.Div(
         cards,
         style={
-            "display": "flex",
-            "flexWrap": "wrap",
-            "justifyContent": "flex-start",
-            "gap": "8px",
-            "padding": "8px 0",
+            "display": "grid",
+            "gridTemplateColumns": "repeat(auto-fit, minmax(160px, 1fr))",
+            "gap": "14px",
+            "padding": "4px 0",
         },
     )
 
@@ -252,43 +314,84 @@ def make_app() -> Dash:
     app.layout = html.Div(
         style={
             "fontFamily": "system-ui, -apple-system, sans-serif",
-            "maxWidth": "1100px",
+            "maxWidth": "1240px",
             "margin": "20px auto",
-            "padding": "0 16px",
+            "padding": "0 20px",
+            "background": "#f7f7f8",
+            "minHeight": "100vh",
         },
         children=[
-            html.H1("Soil Moisture Monitor"),
             html.Div(
-                f"Gateway {GATEWAY} · polling every {POLL_INTERVAL}s",
-                style={"color": "#666", "marginBottom": "12px"},
+                style={
+                    "display": "flex",
+                    "alignItems": "baseline",
+                    "justifyContent": "space-between",
+                    "flexWrap": "wrap",
+                    "gap": "12px",
+                    "marginBottom": "4px",
+                },
+                children=[
+                    html.H1(
+                        "Soil Moisture Monitor",
+                        style={"margin": 0, "fontSize": "26px"},
+                    ),
+                    html.Div(
+                        f"Gateway {GATEWAY} · polling every {POLL_INTERVAL}s",
+                        style={"color": "#777", "fontSize": "13px"},
+                    ),
+                ],
             ),
             html.Div(
                 [
-                    html.Label("Time window:", style={"marginRight": "8px"}),
+                    html.Label(
+                        "Time window:",
+                        style={"marginRight": "8px", "fontSize": "13px"},
+                    ),
                     dcc.Dropdown(
                         id="window",
                         options=WINDOW_OPTIONS,
                         value=24,
                         clearable=False,
-                        style={"width": "200px", "display": "inline-block"},
+                        style={"width": "180px"},
                     ),
                     html.Span(
                         id="status",
-                        style={"marginLeft": "16px", "color": "#666"},
+                        style={
+                            "marginLeft": "16px",
+                            "color": "#666",
+                            "fontSize": "13px",
+                        },
                     ),
                 ],
                 style={
                     "display": "flex",
                     "alignItems": "center",
-                    "marginBottom": "16px",
+                    "margin": "18px 0 20px",
                 },
             ),
-            html.H2("Current levels", style={"marginTop": "8px"}),
             html.Div(id="gauges"),
-            html.H2("History", style={"marginTop": "32px"}),
-            dcc.Graph(id="humidity-chart"),
-            html.H2("Current readings", style={"marginTop": "32px"}),
-            html.Div(id="status-table"),
+            html.Div(
+                style={
+                    "background": "#fff",
+                    "border": "1px solid #e5e5e5",
+                    "borderRadius": "12px",
+                    "padding": "12px 16px 4px",
+                    "marginTop": "20px",
+                    "boxShadow": "0 1px 3px rgba(0,0,0,0.04)",
+                },
+                children=[
+                    html.H2(
+                        "History",
+                        style={
+                            "fontSize": "16px",
+                            "fontWeight": 600,
+                            "margin": "4px 0 8px",
+                            "color": "#333",
+                        },
+                    ),
+                    dcc.Graph(id="humidity-chart", config={"displaylogo": False}),
+                ],
+            ),
             dcc.Interval(id="refresh", interval=15_000, n_intervals=0),
         ],
     )
@@ -296,7 +399,6 @@ def make_app() -> Dash:
     @app.callback(
         Output("humidity-chart", "figure"),
         Output("status", "children"),
-        Output("status-table", "children"),
         Output("gauges", "children"),
         Input("refresh", "n_intervals"),
         Input("window", "value"),
@@ -313,27 +415,40 @@ def make_app() -> Dash:
         else:
             for ch, sub in df.groupby("channel"):
                 label = sub["name"].dropna().iloc[0] if sub["name"].notna().any() else None
-                name = f"Ch {int(ch)}" + (f" — {label}" if label else "")
+                name = label or f"Ch {int(ch)}"
                 fig.add_trace(
                     go.Scatter(
                         x=sub["time"],
                         y=sub["humidity"],
-                        mode="lines+markers",
+                        mode="lines",
+                        line=dict(width=2),
                         name=name,
+                        hovertemplate="%{y:.0f}%<extra>%{fullData.name}</extra>",
                     )
                 )
         fig.update_layout(
-            xaxis_title="Time",
+            xaxis_title=None,
             yaxis_title="Soil moisture (%)",
-            yaxis=dict(range=[0, 100]),
+            yaxis=dict(range=[0, 100], gridcolor="#eee", zeroline=False),
+            xaxis=dict(gridcolor="#eee"),
             hovermode="x unified",
-            margin=dict(l=50, r=20, t=20, b=40),
-            height=480,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+            margin=dict(l=50, r=20, t=10, b=40),
+            height=420,
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            legend=dict(
+                orientation="v",
+                yanchor="top",
+                y=1,
+                xanchor="left",
+                x=1.02,
+                font=dict(size=12),
+                bgcolor="rgba(0,0,0,0)",
+            ),
         )
 
         if df.empty:
-            return fig, "Waiting for first reading…", html.Div(), build_gauges(df)
+            return fig, "Waiting for first reading…", build_gauges(df)
 
         latest_ts = int(df["ts"].max())
         latest_local = datetime.fromtimestamp(latest_ts).strftime("%Y-%m-%d %H:%M:%S")
@@ -342,41 +457,7 @@ def make_app() -> Dash:
         latest = (
             df.sort_values("ts").groupby("channel").tail(1).sort_values("channel")
         )
-        header = html.Tr(
-            [
-                html.Th(c, style={"textAlign": "left", "padding": "6px 12px"})
-                for c in ("Channel", "Name", "Humidity", "Battery", "Voltage")
-            ]
-        )
-        body_rows = []
-        for _, r in latest.iterrows():
-            body_rows.append(
-                html.Tr(
-                    [
-                        html.Td(int(r["channel"]), style={"padding": "6px 12px"}),
-                        html.Td(r["name"] or "—", style={"padding": "6px 12px"}),
-                        html.Td(
-                            f"{r['humidity']:.0f}%", style={"padding": "6px 12px"}
-                        ),
-                        html.Td(
-                            int(r["battery"]), style={"padding": "6px 12px"}
-                        ),
-                        html.Td(
-                            f"{r['voltage']:.2f} V",
-                            style={"padding": "6px 12px"},
-                        ),
-                    ]
-                )
-            )
-        table = html.Table(
-            [header, *body_rows],
-            style={
-                "borderCollapse": "collapse",
-                "width": "100%",
-                "border": "1px solid #ddd",
-            },
-        )
-        return fig, status_text, table, build_gauges(latest)
+        return fig, status_text, build_gauges(latest)
 
     return app
 
