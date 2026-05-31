@@ -23,6 +23,16 @@ DB_PATH = Path(os.environ.get("SOIL_DB", Path(__file__).parent / "soil.db"))
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8050"))
 
+# Friendly per-channel labels. Override whatever the gateway returns
+# (the WH51's on-device name field is often blank / hard to set).
+CHANNEL_NAMES = {
+    1: "Tomatoes under Redwood Tree 🍅",
+    2: "Sunflowers in a Barrel 🌻",
+    3: "Tomatoes 2 🍅",
+    4: "Sunflowers and Bougainvillea 🌺",
+    5: "Herb box 🌿",
+}
+
 
 def init_db() -> None:
     with sqlite3.connect(DB_PATH) as con:
@@ -102,6 +112,8 @@ def load_df(window_hours: float) -> pd.DataFrame:
         df["time"] = pd.to_datetime(df["ts"], unit="s", utc=True).dt.tz_convert(
             datetime.now().astimezone().tzinfo
         )
+        # Apply friendly name overrides (CHANNEL_NAMES wins over gateway name).
+        df["name"] = df["channel"].map(CHANNEL_NAMES).fillna(df["name"])
     return df
 
 
