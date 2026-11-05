@@ -5,6 +5,7 @@ stores every reading in a local SQLite database, and serves an
 interactive Plotly time-series at http://127.0.0.1:8050.
 """
 
+import json
 import os
 import sqlite3
 import threading
@@ -20,29 +21,52 @@ from plotly.subplots import make_subplots
 import requests
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 
-GATEWAY = os.environ.get("ECOWITT_GATEWAY", "192.168.2.201")
+# Deployment-specific, so there is no default: a baked-in address would be
+# both wrong for everyone else and a needless detail about the author's LAN.
+GATEWAY = os.environ.get("ECOWITT_GATEWAY", "").strip()
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 DB_PATH = Path(os.environ.get("SOIL_DB", Path(__file__).parent / "soil.db"))
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8050"))
 
-# Friendly per-channel labels. Override whatever the gateway returns
-# (the WH51's on-device name field is often blank / hard to set).
-CHANNEL_NAMES = {
-    1: "Tomatoes under Redwood Tree 🍅",
-    2: "Geraniums 🌸",
-    3: "Tomatoes 2 🍅",
-    4: "Sunflowers and Bougainvillea 🌺",
-    5: "Herb box 🌿",
-    6: "Office Bird of Paradise 🦜",
-    7: "Office Rubber Plant 🪴",
-    8: "Chrysanthemums 🌼",
-    9: "Orange Tree 🍊",
-    10: "Outdoor Bird of Paradise 🦜",
-    11: "Pothos 🍃",
-    12: "Strawberries 🍓",
-    13: "Mums in Wine Barrel 🌼",
-}
+CHANNELS_FILE = Path(
+    os.environ.get("CHANNELS_FILE", Path(__file__).parent / "channels.json")
+)
+
+
+def load_channel_names() -> dict:
+    """Friendly per-channel labels, read from channels.json if present.
+
+    Kept out of the source, and out of git, on purpose: the labels describe
+    someone's home - which rooms, which plants, which beds - so the repo
+    ships channels.example.json and leaves the real file local. A missing
+    file, or a channel with no entry, just falls back to "Channel N".
+    """
+    try:
+        with CHANNELS_FILE.open(encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[config] ignoring {CHANNELS_FILE}: {exc}", flush=True)
+        return {}
+
+    if not isinstance(raw, dict):
+        print(f"[config] {CHANNELS_FILE} should be an object of channel -> name", flush=True)
+        return {}
+
+    names = {}
+    for key, value in raw.items():
+        try:
+            names[int(key)] = str(value)
+        except (TypeError, ValueError):
+            print(f"[config] skipping non-numeric channel key {key!r}", flush=True)
+    return names
+
+
+# Override whatever the gateway returns (the WH51's on-device name field is
+# often blank / hard to set).
+CHANNEL_NAMES = load_channel_names()
 
 
 def init_db() -> None:
@@ -299,7 +323,7 @@ def build_sparklines(series: pd.DataFrame, latest: pd.DataFrame, settings: dict)
             xs, ys = [], []
 
         pct = current.get(ch)
-        head = CHANNEL_NAMES.get(ch, f"Ch {ch}")
+        head = CHANNEL_NAMES.get(ch, f"Channel {ch}")
         if pct is not None:
             head += f" · {pct:.0f}%"
         head += f"  (ok {low:.0f}\u2013{high:.0f}%)"
@@ -409,7 +433,7 @@ def build_history_figure(series: pd.DataFrame, latest: pd.DataFrame, settings: d
     rows = -(-len(channels) // CHART_COLS)  # ceil
     titles = []
     for ch in channels:
-        name = CHANNEL_NAMES.get(ch, f"Ch {ch}")
+        name = CHANNEL_NAMES.get(ch, f"Channel {ch}")
         pct = current.get(ch)
         lo, hi = band_for(settings, ch)
         band = f"{lo:.0f}\u2013{hi:.0f}%"
@@ -462,7 +486,7 @@ def build_history_figure(series: pd.DataFrame, latest: pd.DataFrame, settings: d
                     x=g["time"], y=g["humidity"],
                     mode="lines",
                     line={"color": CHART_ACCENT, "width": 1.8},
-                    name=CHANNEL_NAMES.get(ch, f"Ch {ch}"),
+                    name=CHANNEL_NAMES.get(ch, f"Channel {ch}"),
                     hovertemplate="%{y:.0f}%  ·  %{x|%b %-d %H:%M}<extra></extra>",
                 ),
                 row=row, col=col,
@@ -1214,6 +1238,11 @@ def make_app() -> Dash:
 
 
 if __name__ == "__main__":
+    if not GATEWAY:
+        raise SystemExit(
+            "Set ECOWITT_GATEWAY to your gateway's IP or hostname, e.g.\n"
+            "    ECOWITT_GATEWAY=192.168.1.50 python3 app.py"
+        )
     init_db()
     # Prime the DB with one reading so the dashboard isn't empty on first load.
     try:
