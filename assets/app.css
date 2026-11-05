@@ -1,0 +1,5 @@
+/* The kiosk root is sized to 100vh; the browser's default 8px body margin
+   pushes it 16px past the viewport and makes the wall display scroll. */
+body {
+  margin: 0;
+}

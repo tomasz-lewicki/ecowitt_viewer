@@ -6,3 +6,4 @@ soil.db-journal
 soil.db-wal
 soil.db-shm
 .DS_Store
+channels.json
